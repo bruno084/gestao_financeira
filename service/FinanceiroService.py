@@ -1,19 +1,40 @@
-from sqlalchemy.orm import Session
-from entities.ProdutoModel import ProdutoModel
+import json
+class FinanceiroService:
+    @staticmethod
+    def atualizar_saldo(novo_saldo: float):
+        # Le o arquivo atual para manter os dois campos se existirem
+        try:
+            with open("saldo.json", "r") as f:
+                dados = json.load(f)
+        except Exception:
+            dados = {}
 
-def calcular_resumo_financeiro(db: Session):
-    # 1. Procura todos os produtos registrados no banco
-    produtos = db.query(ProdutoModel).all()
+        # Atualiza ambos ou o principal
+        dados["saldo_mensal"] = novo_saldo
+        dados["saldo_disponivel"] = novo_saldo
+        with open("saldo.json", "w") as f:
+            json.dump(dados, f, ident = 4)
+        return novo_saldo
 
-    # . Calcula a quantidade total de itens somando o stock de cada produto
-    total_itens = sum(p.quantidade for p in produtos)
+    @staticmethod
+    def verificar_orcamento(produtos):
+        # Le o saldo mensal do JSON
+        with open("saldo.json", "r") as f:
+            dados = json.load(f)
+        saldo_mensal = dados.get("saldo_mensal", 0.0)
 
-    # 3. Calcula o valor financeiro total do stock (quantidade * preco unitario de cada item)
-    valor_total_estoque = sum(p.quantidade * p.preco_unitario for p in produtos)
+        # Calcula o total do estoque ('preco * quantidade')
 
-    # 4. Retorna um dicionario estruturado com os dados consolidados o inventario
-    return {
-        "totalProdutos": len(produtos),             # Quantidade de produtos diferentes registrados
-        "totalItemsEmEstoque": total_itens,         # Soma total das quantidades fisicas em stock
-        "valorTotalEstoque": valor_total_estoque    # Soma total do valor em dinheiro parado no stock
-    }
+        valor_total_estoque = sum(p.preco * p.quantidade for p in produtos)
+
+        # Subtrai do saldo mensal
+        saldo_restante = saldo_mensal - valor_total_estoque
+        status = saldo_restante <= 0
+
+        return {
+            "status": status,       # True se dentro do orcamento, False se estourar
+            "saldo_mensal": saldo_mensal,
+            "valor_total_estoque":valor_total_estoque,
+            "saldo_restante": saldo_restante,
+            "mensagem": "Dentro do orçamento!" if status else "Atenção: O estoque ultrapassou o saldo mensal!"
+        }

@@ -9,7 +9,7 @@ from repository.ConsultarRepository import listar_produtos
 router = APIRouter(prefix="/api", tags=["Produtos"])
 
 # Rota GET /api/produtos que retorna uma lista de ProdutoOut
-@router.get("/profutos", response_model = list[ProdutoOut])
+@router.get("/produtos", response_model = list[ProdutoOut])
 def buscar_produtos(
         ordem: Optional[str] = None,
         limit: Optional[int] = None,
