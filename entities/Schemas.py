@@ -45,3 +45,8 @@ class ProdutoUpdate(CamelModel):
 class ProdutoOut(ProdutoIn):
     id: int
     criado_em: datetime
+
+# Modelo para atualizar ou registrar o saldo mensal e a data de recorrencia
+class SaldoUpdateSchema(CamelModel):
+    saldo_mensal: Dinheiro
+    data_saldo: Optional[datetime] = None
