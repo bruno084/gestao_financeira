@@ -1,53 +1,83 @@
-from fastapi import FastAPI, Request
+"""API Gestão Financeira. Iniciar com: uvicorn main:app --reload --port 8000"""
+import logging
+import os
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 
-# Importamos o motor do banco e a Base do database.py
-from database import engine, Base
-
-# IMPORTANTE: Importamos o ProdutoModel para o SQLAlchemy reconhecer a tabela no banco
-import entities.ProdutoModel
-
-# Importamos os roteadores (routers) de cada funcionalidade criada nos controllers
+import entities.ProdutoModel  # noqa: F401  (registra a tabela 'produtos')
+import entities.SaldoModel  # noqa: F401  (registra a tabela 'saldo')
+from controllers.ConsultarController import router as consultar_router
 from controllers.CriarController import router as criar_router
-from controllers.ConsultarController import router as consultar_router  # <--- Adicionado
-from controllers.DeletarController import router as deletar_router      # <--- Adicionado
-from controllers.EditarController import router as editar_router        # <--- Adicionado
+from controllers.DeletarController import router as deletar_router
+from controllers.EditarController import router as editar_router
+from controllers.FinanceiroController import router as financeiro_router
+from controllers.SaldoController import router as saldo_router
+from database import Base, SessionLocal, engine
+from repository.SaldoRepository import obter_ou_criar_saldo
 
-# CRIA AUTOMATICAMENTE A TABELA 'produtos' E O ARQUIVO 'banco.db' AO INICIAR
-Base.metadata.create_all(bind=engine)
+logger = logging.getLogger("gestao_financeira")
 
-# Inicializamos a aplicação FastAPI
-app = FastAPI(title="API Gestão Financeira")
 
-# Configuração de CORS para liberar conexões do front-end
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    Base.metadata.create_all(bind=engine)
+    with SessionLocal() as db:
+        obter_ou_criar_saldo(db)  # garante a linha única do saldo antes de receber requisições
+    yield
+
+
+app = FastAPI(title="API Gestão Financeira", lifespan=lifespan)
+
+_MENSAGENS_PADRAO = {"Not Found": "Recurso não encontrado.", "Method Not Allowed": "Método não permitido."}
+
+
+async def capturar_erros_inesperados(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    """Transforma qualquer falha inesperada em JSON {"message"}. Fica DENTRO do CORS (é adicionado antes),
+    então a resposta de erro 500 também leva os cabeçalhos CORS e o front consegue ler a mensagem."""
+    try:
+        return await call_next(request)
+    except Exception:
+        logger.exception("Erro inesperado em %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"message": "Erro interno do servidor. Tente novamente."})
+
+
+app.add_middleware(BaseHTTPMiddleware, dispatch=capturar_erros_inesperados)
+
+# Aceita o front em qualquer porta de localhost/127.0.0.1. Ao hospedar, defina CORS_ORIGINS="https://seu-site.com".
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "Accept"],
 )
 
-# Registramos todos os roteadores na aplicação principal
-app.include_router(criar_router)      # Rota POST /api/produtos
-app.include_router(consultar_router)  # Rota GET /api/produtos
-app.include_router(deletar_router)    # Rota DELETE /api/produtos/{id}
-app.include_router(editar_router)     # Rota PUT /api/produtos/{id}
+for router in (criar_router, consultar_router, editar_router, deletar_router, saldo_router, financeiro_router):
+    app.include_router(router)
 
-# Handler personalizado para formatar erros de validação no padrão com o campo "message" que o front exige
+
 @app.exception_handler(RequestValidationError)
 async def erro_validacao(_: Request, exc: RequestValidationError) -> JSONResponse:
-    campos = ", ".join(sorted({str(e["loc"][-1]) for e in exc.errors()}))
-    return JSONResponse(status_code=422, content={"message": f"Dados inválidos: {campos}."})
+    nomes: set[str] = set()
+    for erro in exc.errors():
+        ultimo = erro["loc"][-1] if erro["loc"] else "body"
+        nomes.add("corpo da requisição" if ultimo == "body" or isinstance(ultimo, int) else str(ultimo))
+    return JSONResponse(status_code=422, content={"message": f"Dados inválidos: {', '.join(sorted(nomes))}."})
 
-# Handler para erros HTTP genéricos
+
 @app.exception_handler(StarletteHTTPException)
 async def erro_http(_: Request, exc: StarletteHTTPException) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"message": str(exc.detail)})
+    detalhe = str(exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"message": _MENSAGENS_PADRAO.get(detalhe, detalhe)})
 
-# Rota de Teste na raiz
+
 @app.get("/")
-def home():
-    return {"status": "Servidor rodando e tabela 'produtos' criada com sucesso!"}
+def home() -> dict[str, str]:
+    return {"status": "Servidor rodando."}

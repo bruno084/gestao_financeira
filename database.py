@@ -1,26 +1,42 @@
-# Importando as funcoes do SQLAlchemy para conectar ao banco SQLite
+"""Conexão com o SQLite e utilitários de sessão."""
+import os
+import warnings
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Annotated
+
+from fastapi import Depends
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SAWarning
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-# Nome do arquivo de banco de dados que será criado automaticamente (3 barras)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./banco.db"
+# O SQLite guarda NUMERIC como número de ponto flutuante; os valores são sempre
+# arredondados para 2 casas na leitura e na soma, então o aviso é ruído.
+warnings.filterwarnings("ignore", message=r".*does \*not\* support Decimal.*", category=SAWarning)
 
-# Engine (motor) que conecta ao arquivo SQLite
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
-)
+BASE_DIR = Path(__file__).resolve().parent
 
-# Fabrica para criar sessoes com o banco de dados
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Caminho absoluto: o banco é sempre o mesmo, não importa de qual pasta o servidor foi iniciado.
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{(BASE_DIR / 'banco.db').as_posix()}")
 
-# Base para mapear as tabelas
-Base = declarative_base()
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
-# Funcao para abrir e fechar a conexao do banco a cada requisicao
-def get_db():
+
+class Base(DeclarativeBase):
+    """Base de todos os modelos ORM."""
+
+
+def get_db() -> Iterator[Session]:
+    """Abre uma sessão por requisição; desfaz a transação se algo falhar."""
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
+
+
+DbSession = Annotated[Session, Depends(get_db)]

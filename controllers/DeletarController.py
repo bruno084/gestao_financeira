@@ -1,30 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, HTTPException, status
 
-# Importamos a dependencia para obter a conexao com o banco de dados
-from database import get_db
-
-# Importamos o Schema de reposta
+from database import DbSession
+from entities.ProdutoModel import ProdutoModel
 from entities.Schemas import ProdutoOut
-
-# Importamos a funcao de deleçao do repositorio
 from repository.DeletarRepository import deletar_produto
 
-# Criamos o router com o prefixo /api exigido
-router = APIRouter(prefix = "/api", tags = ["Produtos"])
+router = APIRouter(prefix="/api", tags=["Produtos"])
 
-# Rota DELETE /api/produtos/{produto_id} para remover um produto
-@router.delete("/produtos/{produto_id}", response_model = ProdutoOut)
-def remover_produto(produto_id: int, db: Session = Depends(get_db)):
-    # 1. Chama o repositorio para tentar encontrar e deletar o produto
-    produto_deletado = deletar_produto(db = db, produto_id = produto_id)
 
-    # 2. Se a funcao retornar None, significa que o produto nao existe
-    if not produto_deletado:
-        # Lança o erro HTTP 404 padronizado no formato {"message": "..."}
-        raise HTTPException(
-            status_code = status.HTTP_404_NOT_FOUND,
-            detail = "Produto não encontrado."
-        )
-        # 3. Retorna os dados do produto que acabou de ser removido
-    return produto_deletado
+@router.delete("/produtos/{produto_id}", response_model=ProdutoOut)
+def remover_produto(produto_id: int, db: DbSession) -> ProdutoModel:
+    produto = deletar_produto(db=db, produto_id=produto_id)
+    if produto is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Produto não encontrado.")
+    return produto
