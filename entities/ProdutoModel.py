@@ -1,17 +1,20 @@
-# Este arquivo diz ao SQLite quais colunas e tabela produtos terá
+"""Tabela 'produtos' no SQLite."""
+from datetime import datetime
+from decimal import Decimal
 
-from datetime import datetime, timezone
-from sqlalchemy import Column, Integer, String, Numeric, DateTime
+from sqlalchemy import DateTime, Integer, Numeric, String
+from sqlalchemy.orm import Mapped, mapped_column
+
 from database import Base
+from entities.tempo import agora_utc
 
-# Modelo da tabela no banco de dados SQLite
+
 class ProdutoModel(Base):
     __tablename__ = "produtos"
 
-    id = Column(Integer, primary_key=True, index=True)
-    nome = Column(String(100), nullable=False)
-    categoria = Column(String(20), nullable=False)
-    quantidade = Column(Integer, nullable=False)
-    preco_unitario = Column(Numeric(10, 2), nullable=False)
-    # Define o campo de data/hora padrão com timezone UTC
-    criado_em = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    nome: Mapped[str] = mapped_column(String(100), nullable=False)
+    categoria: Mapped[str] = mapped_column(String(20), nullable=False)
+    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+    preco_unitario: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=agora_utc)

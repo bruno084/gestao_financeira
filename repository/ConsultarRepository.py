@@ -1,35 +1,34 @@
-from typing import Optional
+from typing import Literal
+
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+
 from entities.ProdutoModel import ProdutoModel
 
 
-def listar_produtos(db: Session, ordem: Optional[str] = None, limit: Optional[int] = None):
-    # 1. Inicia a consulta base na tabela de produtos
-    query = db.query(ProdutoModel)
+def _escapar_like(texto: str) -> str:
+    """Impede que % e _ digitados pelo usuário virem curingas da busca."""
+    return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-    # 2. Se o front mandar ordem = "recentes", ordena o mais novo para o mais antigo
+
+def listar_produtos(
+    db: Session,
+    ordem: Literal["recentes"] | None = None,
+    limit: int | None = None,
+    busca: str | None = None,
+) -> list[ProdutoModel]:
+    stmt = select(ProdutoModel)
+
+    if busca:
+        stmt = stmt.where(ProdutoModel.nome.ilike(f"%{_escapar_like(busca)}%", escape="\\"))
+
+    # O id entra como desempate: dois itens criados no mesmo instante mantêm ordem estável.
     if ordem == "recentes":
-        query = query.order_by(ProdutoModel.criado_em.desc())
+        stmt = stmt.order_by(desc(ProdutoModel.criado_em), desc(ProdutoModel.id))
+    else:
+        stmt = stmt.order_by(ProdutoModel.id)
 
-    # 3. Se o front mandar limit, pega apenas os N primeiros
     if limit is not None:
-        query = query.limit(limit)
+        stmt = stmt.limit(limit)
 
-    # 4. Executa a busca e retorna a lista de objetos do banco
-    return query.all()
-
-
-def buscar_produtos_por_nome(db: Session, nome_busca: str):
-    # 1. Pega todos os produtos salvos no banco de dados usando o ProdutoModel importado
-    todos_produtos = db.query(ProdutoModel).all()
-
-    # 2. Converte o termo que veio do front-end para minúsculo (.lower())
-    termo_limpo = nome_busca.lower()
-
-    # 3. LIST COMPREHENSION: Filtra os itens onde o termo está no nome (tudo em minúsculo)
-    produtos_filtrados = [
-        produto for produto in todos_produtos
-        if termo_limpo in produto.nome.lower()
-    ]
-
-    return produtos_filtrados
+    return list(db.scalars(stmt).all())
