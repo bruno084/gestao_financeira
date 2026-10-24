@@ -12,7 +12,6 @@ def _ou_404(produto: ProdutoModel | None, produto_id: int) -> ProdutoModel:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Produto com ID {produto_id} não foi encontrado.")
     return produto
 
-
 @router.put("/{produto_id}", response_model=ProdutoOut)
 def editar_produto(produto_id: int, dados: ProdutoIn, db: DbSession) -> ProdutoModel:
     """Substitui todos os campos do produto."""

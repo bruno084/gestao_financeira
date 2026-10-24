@@ -20,6 +20,7 @@ from controllers.EditarController import router as editar_router
 from controllers.FinanceiroController import router as financeiro_router
 from controllers.SaldoController import router as saldo_router
 from database import Base, SessionLocal, engine
+from migracoes import migrar
 from repository.SaldoRepository import obter_ou_criar_saldo
 
 logger = logging.getLogger("gestao_financeira")
@@ -28,6 +29,7 @@ logger = logging.getLogger("gestao_financeira")
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Base.metadata.create_all(bind=engine)
+    migrar(engine)  # atualiza bancos criados por versões antigas
     with SessionLocal() as db:
         obter_ou_criar_saldo(db)  # garante a linha única do saldo antes de receber requisições
     yield
