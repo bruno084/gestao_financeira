@@ -1,5 +1,5 @@
 """Validação de entrada e formato de saída (camelCase) da API."""
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Annotated
@@ -76,6 +76,7 @@ class SaldoOut(CamelModel):
     model_config = ConfigDict(from_attributes=True)
 
     saldo_mensal: Dinheiro
+    saldo_disponivel: Valor  # pode ficar negativo se os itens custarem mais do que entrou
     data_saldo: datetime | None = None
 
     @field_serializer("data_saldo")
@@ -86,12 +87,14 @@ class SaldoOut(CamelModel):
 # ---------- Resumo financeiro ----------
 class GastoPorCategoria(CamelModel):
     categoria: Categoria
-    total: Dinheiro
+    total: Valor  # valor dos itens que estão no estoque agora; sem limite de dígitos por ser uma soma
 
 
 class ResumoFinanceiro(CamelModel):
     saldo_mensal: Dinheiro
-    total_gasto: Dinheiro
-    saldo_restante: Valor
-    excedeu_saldo: bool
+    total_creditado: Valor  # tudo que já entrou (valor mensal x meses)
+    total_gasto: Valor  # total_creditado - saldo_disponivel; não diminui ao excluir itens
+    saldo_disponivel: Valor
+    excedeu_saldo: bool  # true quando o saldo disponível ficou negativo
+    proxima_renovacao: date | None = None  # None enquanto o saldo nunca foi salvo
     por_categoria: list[GastoPorCategoria]
