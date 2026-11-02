@@ -103,3 +103,31 @@ def salvar_saldo(db: Session, valor: Decimal) -> SaldoModel:
     db.commit()
     db.refresh(saldo)
     return saldo
+
+
+def resetar_saldo_zerado(db: Session) -> SaldoModel:
+    """Reseta todos os valores para zero e limpa a data, voltando ao estado inicial (zero-state)."""
+    saldo = obter_ou_criar_saldo(db)
+    db.execute(
+        update(SaldoModel)
+        .where(SaldoModel.id == SALDO_ID)
+        .values(
+            saldo_mensal=Decimal("0"),
+            saldo_disponivel=Decimal("0"),
+            total_creditado=Decimal("0"),
+            renovacoes_aplicadas=0,
+            data_saldo=None,  # Limpa a data para permitir um novo ciclo limpo
+        )
+    )
+    db.commit()
+    db.refresh(saldo)
+    return saldo
+
+
+def resetar_e_salvar_saldo(db: Session, valor: Decimal) -> SaldoModel:
+    """Executa a query que reseta e chama-a antes de salvar os novos valores."""
+    # 1. Primeiro reseta tudo por completo
+    resetar_saldo_zerado(db)
+
+    # 2. Logo a seguir, grava o novo valor usando a lógica normal de salvar_saldo
+    return salvar_saldo(db, valor)
